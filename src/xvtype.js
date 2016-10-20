@@ -299,7 +299,7 @@ function _promote(a,b) {
             c = Number;
         }
         if (d == Integer || d == Decimal || d == Float || d == UntypedAtomic) {
-            b = +a.toString();
+            b = +b.toString();
             d = Number;
         }
     }

@@ -1,6 +1,6 @@
 {
   "name": "xvtype",
-  "version": "0.0.6",
+  "version": "0.0.9",
   "description": "Type Schema for XVNode",
   "main": "./lib/xvtype.js",
   "scripts": {
@@ -20,9 +20,11 @@
     "bignumber.js": "^2.4.0",
     "decimal.js": "^6.0.0",
     "immutable": "^3.8.1",
+    "xvarray": "0.0.3",
     "xverr": "0.0.4",
-    "xvnode": "^0.1.0",
-    "xvseq": "^0.1.1"
+    "xvmap": "0.0.5",
+    "xvnode": "^0.1.2",
+    "xvseq": "^0.1.2"
   },
   "devDependencies": {
     "babel-cli": "^6.14.0",

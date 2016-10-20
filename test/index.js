@@ -14,7 +14,6 @@ var node = n.element("root",xs.seq(n.element("a",n.text("bla")),n.element("b","b
 //console.log(new Decimal(2).dividedBy(new Decimal(3)).times(new Decimal(3)).valueOf());
 //console.log(xs.float(xs.float(4.1).op("-",xs.float(0.01))));
 
-
 assertEq(a.op("+",b),xs.integer(6));
 assertEq(a.op("eq",b),xs.boolean(false));
 assertEq(a.op("ne",b),xs.boolean(true));
