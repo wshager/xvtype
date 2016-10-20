@@ -52,17 +52,14 @@ class UntypedAtomic extends String {
 		//If the atomic value is an instance of xdt:untypedAtomic
 		//and the other is not an instance of xs:string, xdt:untypedAtomic, or any numeric type,
 		//then the xdt:untypedAtomic value is cast to the dynamic type of the other value.
-		switch(other){
-			case UntypedAtomic: return String(this._value);
-			case String: return String(this._value);
-			case Decimal: return Number(this._value);
-			case Integer: return Number(this._value);
-            case Number: return Number(this._value);
-            default: return new other(this._value);
-		}
+
+        // NO-OP, moved elsewhere
 	}
     toString(){
         return this._value.toString();
+    }
+    valueOf() {
+        return this._value.valueOf();
     }
 }
 
@@ -174,6 +171,11 @@ export function boolean($a){
 }
 
 export function cast($a,$b){
+    /* ALT
+    var a = _first($a);
+    if(a === undefined) return $a;
+    return seq(_cast(a,_first($b)));
+    */
     return item($a).op(_cast,$b);
 }
 
@@ -287,30 +289,64 @@ function _promote(a,b) {
     //If each operand is an instance of one of the types xs:decimal, xs:float, or xs:double, then both operands are cast to type xs:double.
     var c = a.constructor,
         d = b.constructor;
-    if(c == Number || d == Number) {
-        if(c == Integer || c == Decimal || c == Float) a = _cast(a,Number);
-        if(d == Integer || d == Decimal || c == Float) b = _cast(b,Number);
-        c = d = Number;
+    if (c == Number || d == Number) {
+        if (c == Integer || c == Decimal || c == Float || c == UntypedAtomic) {
+            a = +a.toString();
+            c = Number;
+        }
+        if (d == Integer || d == Decimal || d == Float || d == UntypedAtomic) {
+            b = +a.toString();
+            d = Number;
+        }
     }
-    if(c != d) {
-        return error("err:XPTY0004","Cannot compare operands: " + c.name + " and "+d.name);
+    if(c == Integer || d == Integer) {
+        if(c == Decimal || c == UntypedAtomic) {
+            a = c == UntypedAtomic ? new Integer(a.toString()) : a;
+            c = Integer;
+        }
+        if(d == Decimal || d == UntypedAtomic) {
+            b = d == UntypedAtomic ? new Integer(b.toString()) : b;
+            d = Integer;
+        }
     }
-    return [a,b];
+    if(c == String || d == String) {
+        if(c == UntypedAtomic) {
+            a = a.toString();
+            c = String;
+        }
+        if(d == UntypedAtomic) {
+            b = a.toString();
+            d = String;
+        }
+    }
+    if (c != d) {
+        //throw new Error("Cannot compare operands: " + c.name + " and " + d.name);
+        return error("err:XPTY0004", "Cannot compare operands: " + c.name + " and " + d.name);
+    }
+    return [a, b];
 }
 
-function opFactory(iterable,opfn,other) {
-    var seq = Object.create(Seq.Indexed.prototype);
+var NOT_SET = {};
+function opFactory(iterable, opfn, other) {
+    var seq = Object.create(Seq.prototype);
     seq.size = iterable.size;
     var otherIsSeq = _isSeq(other);
+    seq.has = key => iterable.has(key);
+    seq.get = (key, notSetValue) => {
+      var v = _first(iterable.get(key, NOT_SET));
+      return otherIsSeq ? other.reduce(function(pre,cur) {
+            return pre || opfn(v,cur);
+        }, false) : opfn(v, other);
+    };
     seq.__iterateUncached = function (fn, reverse) {
         var seq = this,
             _i = 0,
             stopped = false,
             ret;
-        return iterable.__iterate(function(v, k, c)  {
-            ret = otherIsSeq ?
-                other.flatten(true).reduce((pre,cur) => pre || opfn(v,cur), false) :
-                opfn(v, other);
+        return iterable.__iterate(function (v, k, c) {
+            ret = otherIsSeq ? other.reduce(function(pre,cur) {
+                return pre || opfn(v,cur);
+            }, false) : opfn(v, other);
             stopped = fn(ret, _i++, seq) === false;
             return !stopped;
         });
@@ -318,66 +354,86 @@ function opFactory(iterable,opfn,other) {
     return seq;
 }
 
+function strictOp(iterable, opfn, other, general) {
+    var otherIsSeq = _isSeq(other);
+    var ret = [];
+    iterable.map(function(v){
+        ret.push(otherIsSeq ? other.reduce(function(pre,cur){
+            return pre || opfn(v,cur);
+        },false) : opfn(v,other));
+    });
+    var seq = new Seq(ret);
+    seq._isStrict = true;
+    return seq;
+}
+
 // TODO without eval!
-export function _isNodeSeq($a){
-    return _isNode($a._first());
+function _isNodeSeq($a) {
+    return _isNode(_first($a));
 }
 
 // FIXME the unmarshalling of seqs is probably more efficient than anything else...
 // EXCEPT a filter + a lazy foldRight maybe
 export function _boolean($a) {
-    if(_isEmpty($a)) return false;
+    if (_isEmpty($a)) return false;
     var a = _first($a);
-    if($a.size>1 && !_isNode(a)){
+    if ($a.size > 1 && !_isNode(a)) {
         throw error("err:FORG0006");
     }
     return !!a;
 }
 
 export const logic = {
-    and($a,$b){
+    and: function and($a, $b) {
         return _boolean($a) && _boolean($b);
     },
-    or($a, $b){
+    or: function or($a, $b) {
         return _boolean($a) || _boolean($b);
     },
-    not($a){
+    not: function not($a) {
         return !_first($a);
     }
 };
 
-var opre = /^!=|ne/;
-
-Seq.prototype.op = function(operator,other) {
-    var invert = false, comp = false, general = false;
+const opinv  = {
+    ne: true,
+    '!=': true
+};
+Seq.prototype.op = function (operator, other) {
+    var invert = false,
+        comp = false,
+        general = false;
     var $a = this,
         $b = other,
         opfn;
-    if(typeof operator == "string"){
-        invert = re.test(operator);
-        let operatorName = operatorMap.hasOwnProperty(operator) ? operatorMap[operator] : operator;
-        if(/^and|or|not$/.test(operatorName)){
-            return logic[operatorName](this,other);
+    if (typeof operator == "string") {
+        invert = opinv[operator];
+        let operatorName = operator in operatorMap ? operatorMap[operator] : operator;
+        if (logic[operatorName]) {
+            return logic[operatorName](this, other);
         } else {
             comp = compProto.hasOwnProperty(operatorName);
             general = comp && !compProto.hasOwnProperty(operator);
             opfn = comp ? _comp.bind(null, operatorName, invert) : _op.bind(null, operatorName, invert);
         }
-        if(comp){
+        if (comp) {
             $a = data($a,false);
+            //if(_isNodeSeq(this)) console.log("nodeset",operator,$a.first())
             $b = data($b,false);
         }
-        if(!general){
-            if(_isEmpty($a)) return $a;
-            if(_isEmpty($b)) return $b;
-            if($a.size > 1) return error("err:XPTY0004");
+        if (!general) {
+            if (_isEmpty($a)) return $a;
+            if (_isEmpty($b)) return $b;
+            // FIXME NOT! allow arithmetic on sequences (why not?)...
+            // FIXME reduce when comp result is seq of booleans
+            if ($b.size > 1) return error("err:XPTY0004");
         }
-    } else if(typeof operator == "function") {
+    } else if (typeof operator == "function") {
         opfn = operator;
     } else {
-        return error("xxx","No such operator");
+        return error("xxx", "No such operator");
     }
-    return opFactory($a,opfn,$b);
+    return $a._isStrict ? strictOp($a,opfn,$b,general) : opFactory($a,opfn,$b);
 };
 
 /*
@@ -394,18 +450,20 @@ Seq.prototype.data = function () {
     return dataImpl(this);
 };
 
-function data($a,asString) {
-    if(!_isNode($a)) {
-        if(_isSeq($a)) return $a.map(function (_) {
-            return _isNode(_) ? dataImpl(_, asString) : _;
-        }).flatten(true);
+export function data($a,asString) {
+    if (!_isNode($a)) {
+        if (_isSeq($a)) {
+            return $a.map(function (_) {
+                return _isNode(_) ? dataImpl(_, asString) : _;
+            });
+        }
         return seq($a);
     }
     // node
     return dataImpl($a,asString);
 }
 
-function dataImpl(node, asString=true, fltr=null) {
+function dataImpl(node,asString=true,fltr=false) {
     // FIXME asString should be used to flag for xs/type validation
     //if(node._string) {
     //    return node._string;
@@ -415,28 +473,31 @@ function dataImpl(node, asString=true, fltr=null) {
     if(fltr && fltr === type) return undefined;
     if (type === 1) {
         ret = node.map(function (_) {
-            var ret = dataImpl2(_, asString,2);
+            var ret = dataImpl(_, asString,2);
             if (!(ret instanceof String)) asString = false;
             return ret;
         }).filter(function (_) {
             return _ !== undefined;
-        }).flatten(true);
+        });
         if (asString) ret = ret.join("");
     } else {
-        return dataImpl2(node,asString);
+        ret = _.value();
+        return asString ? ret.toString() : typeof ret == "string" ? _cast(ret,UntypedAtomic) : ret;
     }
-    //node._string = ret;
-    return ret;
 }
 
+/*
 function dataImpl2(node,asString,fltr){
     var type = node._type;
     if(fltr && fltr === type) return undefined;
     if(type == 1) return dataImpl(node,asString,fltr);
-    var ret = node.get(0);
-    ret = asString ? _cast(ret, String) : _cast(ret, node._dataType ? node._dataType : UntypedAtomic);
+    // FIXME should be node!
+    //var ret = node._isNode ? node.value() : node.first();
+    var arr = node._array || node.toArray();
+    var ret = arr[0];
+    ret = asString ? ret.toString() : typeof ret == "string" ? _cast(ret,UntypedAtomic) : ret;
     return ret;
-}
+}*/
 
 Seq.prototype.deepEqual = Seq.prototype.equals;
 
