@@ -6,9 +6,7 @@ import { _isNode } from "xvnode";
 
 import { error } from "xverr";
 
-import * as op from "./op";
-
-import { Seq, seq, _first, _isSeq, toSeq, subsequence, remove, head, tail, count, reverse, insertBefore, _isEmpty, empty, exists } from "xvseq";
+import { Seq, seq, _first, _isSeq, toSeq, _isEmpty } from "xvseq";
 
 // TODO complete math (e.g. type checks for idiv and friends)
 
@@ -72,6 +70,7 @@ class Integer extends Decimal {
     constructor(a){
         super(a);
         this.floor();
+        this.constructor = Integer;
     }
 }
 
@@ -212,10 +211,12 @@ export function to($a,$b){
 }
 
 export function indexOf($a,$b) {
-	var key = $a.findKey(function(i){
-		return b.op("equals",i);
-	});
-	return key !== undefined ? seq(key) : seq();
+    $a = item($a);
+    $b = item($b);
+    var key = $a.findKey(function (i) {
+        return _boolean($b.op("equals", i));
+    });
+    return key !== undefined ? seq(key+1) : seq();
 }
 
 export function call(... a) {
@@ -243,8 +244,15 @@ function _op(op,invert,a,b){
     var ret;
     if(a !== undefined) {
         if(typeof a[op] == "function") {
-            if(!numbertest(a) || !numbertest(b)) return error("err:XPTY0004");
-            ret = a[op](_convert(b,a.constructor));
+            if(!numbertest(a)) return error("err:XPTY0004",a.constructor.name +"("+a+") can not be operand for "+op);
+            if(!numbertest(b)) return error("err:XPTY0004",b.constructor.name +"("+b+") can not be operand for "+op);
+            var ab = _promote(a,b);
+            if(ab instanceof Error) {
+                return ab;
+            }
+            a = ab[0];
+            b = ab[1];
+            ret = a[op](b);
         } else {
             throw new Error("Operator "+op+" not implemented");
         }
@@ -256,16 +264,13 @@ function _comp(op,invert,a,b){
     var ret;
     if(a !== undefined) {
         if(typeof a[op] == "function") {
-            var c = a.constructor;
-            if(c != b.constructor) {
-                // TODO FIXME use JS type casting! 1 == "1"
-                //If each operand is an instance of one of the types xs:string or xs:anyURI, then both operands are cast to type xs:string.
-                //If each operand is an instance of one of the types xs:decimal or xs:float, then both operands are cast to type xs:float.
-                //If each operand is an instance of one of the types xs:decimal, xs:float, or xs:double, then both operands are cast to type xs:double.
-                return error("err:XPTY0004","Cannot compare operands: " + c.name + " and "+b.constructor.name);
+            var ab = _promote(a,b);
+            if(ab instanceof Error) {
+                return ab;
             }
-            //ret = _opImpl(a,b,op);
-            ret = a[op](_convert(b,c));
+            a = ab[0];
+            b = ab[1];
+            ret = a[op](b);
         } else {
             throw new Error("Operator "+op+" not implemented for "+a+" ("+(a.constructor.name)+")");
         }
@@ -273,6 +278,24 @@ function _comp(op,invert,a,b){
     //console.log(a,b,op,ret);
 
     return invert ? !ret : ret;
+}
+
+function _promote(a,b) {
+    // TODO FIXME use JS type casting! 1 == "1"
+    //If each operand is an instance of one of the types xs:string or xs:anyURI, then both operands are cast to type xs:string.
+    //If each operand is an instance of one of the types xs:decimal or xs:float, then both operands are cast to type xs:float.
+    //If each operand is an instance of one of the types xs:decimal, xs:float, or xs:double, then both operands are cast to type xs:double.
+    var c = a.constructor,
+        d = b.constructor;
+    if(c == Number || d == Number) {
+        if(c == Integer || c == Decimal || c == Float) a = _cast(a,Number);
+        if(d == Integer || d == Decimal || c == Float) b = _cast(b,Number);
+        c = d = Number;
+    }
+    if(c != d) {
+        return error("err:XPTY0004","Cannot compare operands: " + c.name + " and "+d.name);
+    }
+    return [a,b];
 }
 
 function opFactory(iterable,opfn,other) {
@@ -285,7 +308,9 @@ function opFactory(iterable,opfn,other) {
             stopped = false,
             ret;
         return iterable.__iterate(function(v, k, c)  {
-            ret = otherIsSeq ? other.reduce(opfn,v) : opfn(v,other);
+            ret = otherIsSeq ?
+                other.flatten(true).reduce((pre,cur) => pre || opfn(v,cur), false) :
+                opfn(v, other);
             stopped = fn(ret, _i++, seq) === false;
             return !stopped;
         });
@@ -309,7 +334,7 @@ export function _boolean($a) {
     return !!a;
 }
 
-const logic = {
+export const logic = {
     and($a,$b){
         return _boolean($a) && _boolean($b);
     },
@@ -321,24 +346,26 @@ const logic = {
     }
 };
 
+var opre = /^!=|ne/;
+
 Seq.prototype.op = function(operator,other) {
     var invert = false, comp = false, general = false;
     var $a = this,
         $b = other,
         opfn;
     if(typeof operator == "string"){
-        invert = /^!=|ne/.test(operator);
-        operator = operatorMap.hasOwnProperty(operator) ? operatorMap[operator] : operator;
-        if(/^and|or|not$/.test(operator)){
-            return logic[operator](this,other);
+        invert = re.test(operator);
+        let operatorName = operatorMap.hasOwnProperty(operator) ? operatorMap[operator] : operator;
+        if(/^and|or|not$/.test(operatorName)){
+            return logic[operatorName](this,other);
         } else {
-            comp = compProto.hasOwnProperty(operator);
-            general = !comp && !opProto.hasOwnProperty(operator);
-            opfn = comp ? _comp.bind(null, operator, invert) : _op.bind(null, operator, invert);
+            comp = compProto.hasOwnProperty(operatorName);
+            general = comp && !compProto.hasOwnProperty(operator);
+            opfn = comp ? _comp.bind(null, operatorName, invert) : _op.bind(null, operatorName, invert);
         }
         if(comp){
-            $a = data($a);
-            $b = data($b);
+            $a = data($a,false);
+            $b = data($b,false);
         }
         if(!general){
             if(_isEmpty($a)) return $a;
@@ -363,43 +390,57 @@ Seq.prototype.getTextNodes = function(){
 };
 */
 
-Seq.prototype.data = function(){
-	return dataImpl(this);
+Seq.prototype.data = function () {
+    return dataImpl(this);
 };
 
-export function data($a){
-    return seq(dataImpl($a));
+function data($a,asString) {
+    if(!_isNode($a)) {
+        if(_isSeq($a)) return $a.map(function (_) {
+            return _isNode(_) ? dataImpl(_, asString) : _;
+        }).flatten(true);
+        return seq($a);
+    }
+    // node
+    return dataImpl($a,asString);
 }
 
-function dataImpl(node,asString=true,fltr=null) {
+function dataImpl(node, asString=true, fltr=null) {
     // FIXME asString should be used to flag for xs/type validation
     //if(node._string) {
     //    return node._string;
     //}
     var ret;
-    if(!_isNode(node)) {
-        if(_isSeq(node)) return node.map(_ => dataImpl(_,asString,fltr));
-        return node;
-    }
-	let type = node._type;
-	if(fltr && type === fltr) return undefined;
-	if(type===1){
-		ret = node.map(function(_){
-			var ret = dataImpl(_,asString,2);
-            if(!(ret instanceof String)) asString = false;
+    var type = node._type;
+    if(fltr && fltr === type) return undefined;
+    if (type === 1) {
+        ret = node.map(function (_) {
+            var ret = dataImpl2(_, asString,2);
+            if (!(ret instanceof String)) asString = false;
             return ret;
-		}).flatten(true).filter(function(_){
-			return _ !== undefined;
-		});
-        if(asString) ret = ret.join("");
-	} else {
-        ret = node.get(0);
-        ret = asString ? _cast(ret,String) : _cast(ret,node._dataType ? node._dataType : UntypedAtomic);
+        }).filter(function (_) {
+            return _ !== undefined;
+        }).flatten(true);
+        if (asString) ret = ret.join("");
+    } else {
+        return dataImpl2(node,asString);
     }
     //node._string = ret;
     return ret;
 }
 
+function dataImpl2(node,asString,fltr){
+    var type = node._type;
+    if(fltr && fltr === type) return undefined;
+    if(type == 1) return dataImpl(node,asString,fltr);
+    var ret = node.get(0);
+    ret = asString ? _cast(ret, String) : _cast(ret, node._dataType ? node._dataType : UntypedAtomic);
+    return ret;
+}
+
 Seq.prototype.deepEqual = Seq.prototype.equals;
 
-export {  fromJS, _isNode, seq, _first, _isSeq, toSeq, subsequence, remove, head, tail, count, reverse, insertBefore, empty, exists };
+export {  fromJS, _isNode };
+export * from "xvseq";
+export { map, entry } from "xvmap";
+export { array } from "xvarray";
