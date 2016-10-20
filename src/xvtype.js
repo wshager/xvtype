@@ -209,6 +209,10 @@ _cast.cache.UntypedAtomic = {};
 export function to($a,$b){
     let a = _first($a);
     let b = _first($b);
+    try {
+        a = a.valueOf() | 1;
+        b = b.valueOf() | 1;
+    } catch(e) {}
     return Range(a,b);
 }
 
@@ -446,8 +450,8 @@ Seq.prototype.getTextNodes = function(){
 };
 */
 
-Seq.prototype.data = function () {
-    return dataImpl(this);
+Seq.prototype.data = function (asString) {
+    return dataImpl(this,asString);
 };
 
 export function data($a,asString) {
@@ -482,8 +486,9 @@ function dataImpl(node,asString=true,fltr=false) {
         if (asString) ret = ret.join("");
     } else {
         ret = _.value();
-        return asString ? ret.toString() : typeof ret == "string" ? _cast(ret,UntypedAtomic) : ret;
+        ret = asString ? ret.toString() : typeof ret == "string" ? _cast(ret,UntypedAtomic) : ret;
     }
+    return ret;
 }
 
 /*
