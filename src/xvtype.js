@@ -209,20 +209,17 @@ _cast.cache.UntypedAtomic = {};
 export function to($a,$b){
     let a = _first($a);
     let b = _first($b);
-    try {
-        a = a.valueOf() | 1;
-        b = b.valueOf() | 1;
-    } catch(e) {}
-    return Range(a,b);
+    a = a !== undefined ? +a.valueOf() : 0;
+    b = b !== undefined ? +b.valueOf() : 0;
+    return new Seq(Range(a, b+1).map(_ => integer(_)).toArray());
 }
 
 export function indexOf($a,$b) {
     $a = item($a);
     $b = item($b);
-    var key = $a.findKey(function (i) {
+    return $a.findKeys(function (i) {
         return _boolean($b.op("equals", i));
     });
-    return key !== undefined ? seq(key+1) : seq();
 }
 
 export function call(... a) {
@@ -360,15 +357,19 @@ function opFactory(iterable, opfn, other) {
 
 function strictOp(iterable, opfn, other, general) {
     var otherIsSeq = _isSeq(other);
-    var ret = [];
-    iterable.map(function(v){
-        ret.push(otherIsSeq ? other.reduce(function(pre,cur){
-            return pre || opfn(v,cur);
-        },false) : opfn(v,other));
-    });
-    var seq = new Seq(ret);
-    seq._isStrict = true;
-    return seq;
+    if(general) {
+        return seq(iterable.reduce(function (acc,v) {
+            return acc || (otherIsSeq ? other.reduce(function (pre, cur) {
+                return pre || opfn(v, cur);
+            }, false) : opfn(v, other));
+        },false));
+    } else {
+        return iterable.map(function (v) {
+            return otherIsSeq ? other.reduce(function (pre, cur) {
+                return pre || opfn(v, cur);
+            }, false) : opfn(v, other);
+        });
+    }
 }
 
 // TODO without eval!
@@ -440,35 +441,29 @@ Seq.prototype.op = function (operator, other) {
     return $a._isStrict ? strictOp($a,opfn,$b,general) : opFactory($a,opfn,$b);
 };
 
-/*
 Seq.prototype.getTextNodes = function(){
+    if(_isSeq(this)) return this.map(_ => _.getTextNodes());
 	if(!_isNode(this) || this._type != 1) return seq();
 	return this.filter(function(_){
 		if(!_isNode(_)) error("err:XPTY0004","Sequence cannot be converted into a node set.");
-		return _._type === 3;
+		return _._type === 3 && !! _.value().toString();
 	});
 };
-*/
 
 Seq.prototype.data = function (asString) {
     return dataImpl(this,asString);
 };
 
 export function data($a,asString) {
-    if (!_isNode($a)) {
-        if (_isSeq($a)) {
-            return $a.map(function (_) {
-                return _isNode(_) ? dataImpl(_, asString) : _;
-            });
-        }
-        return seq($a);
-    }
-    // node
     return dataImpl($a,asString);
 }
 
 function dataImpl(node,asString=true,fltr=false) {
     // FIXME asString should be used to flag for xs/type validation
+    if (_isSeq(node)) {
+        return node.map(_ => dataImpl(_, asString, fltr)).filter(_ => _ !== undefined);
+    }
+    if (!_isNode(node)) return node;
     //if(node._string) {
     //    return node._string;
     //}
@@ -486,7 +481,9 @@ function dataImpl(node,asString=true,fltr=false) {
         if (asString) ret = ret.join("");
     } else {
         ret = node.value();
-        ret = asString ? ret.toString() : typeof ret == "string" ? _cast(ret,UntypedAtomic) : ret;
+        if(asString || typeof ret == "string"){
+            ret = !ret ? undefined : asString ? ret.toString() : _cast(ret, UntypedAtomic);
+        }
     }
     return ret;
 }
