@@ -2,11 +2,15 @@ import { fromJS, Range } from "immutable";
 import Decimal from "decimal.js";
 import BigNumber from "bignumber.js";
 
-import { _isNode } from "xvnode";
+import * as xvnode from "xvnode";
 
 import { error } from "xverr";
 
 import { Seq, seq, _first, _isSeq, toSeq, _isEmpty } from "xvseq";
+
+const ntext = xvnode.text;
+
+const _isNode = xvnode._isNode;
 
 // TODO complete math (e.g. type checks for idiv and friends)
 
@@ -488,18 +492,32 @@ function dataImpl(node,asString=true,fltr=false) {
     return ret;
 }
 
-/*
-function dataImpl2(node,asString,fltr){
-    var type = node._type;
-    if(fltr && fltr === type) return undefined;
-    if(type == 1) return dataImpl(node,asString,fltr);
-    // FIXME should be node!
-    //var ret = node._isNode ? node.value() : node.first();
-    var arr = node._array || node.toArray();
-    var ret = arr[0];
-    ret = asString ? ret.toString() : typeof ret == "string" ? _cast(ret,UntypedAtomic) : ret;
-    return ret;
-}*/
+export function instanceOf($a,$b) {
+    let a = _first($a);
+    let b = _first($b);
+    if(!a) throw error("XPTY0004");
+    var t = a=== undefined || b === undefined ? false : a.constructor === b.constructor;
+    return seq(t);
+}
+
+// TODO rename to neg, add to ops (b undefined)
+export function minus($a) {
+    var a = _first($a);
+    if(typeof a.neg == "function") return seq(a.neg());
+    return seq(-a);
+}
+
+export function text($a) {
+    let a = _first(a);
+    // this is for type testing
+    if(a === undefined) return ntext();
+    if(_isNode(a)) return $a.getTextNodes();
+    return ntext($a);
+}
+
+// TODO export element + attribute and friends as functions with type tests
+export const element = xvnode.element;
+export const attribute = xvnode.attribute;
 
 Seq.prototype.deepEqual = Seq.prototype.equals;
 
