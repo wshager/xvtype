@@ -508,9 +508,9 @@ export function minus($a) {
 }
 
 export function text($a) {
-    let a = _first(a);
+    let a = _first($a);
     // this is for type testing
-    if(a === undefined) return ntext();
+    if(a === undefined) return ntext("");
     if(_isNode(a)) return $a.getTextNodes();
     return ntext($a);
 }
