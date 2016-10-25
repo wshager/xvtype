@@ -485,7 +485,7 @@ function dataImpl(node,asString=true,fltr=false) {
         });
         if (asString) ret = ret.join("");
     } else {
-        ret = _.value();
+        ret = node.value();
         ret = asString ? ret.toString() : typeof ret == "string" ? _cast(ret,UntypedAtomic) : ret;
     }
     return ret;
