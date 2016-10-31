@@ -8,8 +8,6 @@ import { error } from "xverr";
 
 import { Seq, seq, _first, _isSeq, toSeq, _isEmpty } from "xvseq";
 
-const ntext = xvnode.text;
-
 const _isNode = xvnode._isNode;
 
 // TODO complete math (e.g. type checks for idiv and friends)
@@ -510,9 +508,9 @@ export function minus($a) {
 export function text($a) {
     let a = _first($a);
     // this is for type testing
-    if(a === undefined) return ntext("");
+    if(a === undefined) return xvnode.text("");
     if(_isNode(a)) return $a.getTextNodes();
-    return ntext($a);
+    return xvnode.text($a);
 }
 
 // TODO export element + attribute and friends as functions with type tests
@@ -523,5 +521,3 @@ Seq.prototype.deepEqual = Seq.prototype.equals;
 
 export {  fromJS, _isNode };
 export * from "xvseq";
-export { map, entry } from "xvmap";
-export { array } from "xvarray";
