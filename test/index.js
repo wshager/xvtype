@@ -8,6 +8,13 @@ function assertEq(a,b){
 	assert.equal(a.toJS().toString(),b.toJS().toString(),`${a} not equal to ${b}`);
 }
 
+// type tests
+xs.string();
+xs.decimal();
+xs.float();
+xs.double();
+xs.boolean();
+
 var node = n.element("root",xs.seq(n.element("a",n.text("bla")),n.element("b","bli")));
 
 //const Decimal = require("decimal.js");

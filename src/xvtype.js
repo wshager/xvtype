@@ -140,6 +140,8 @@ export function item($a) {
 
 // TODO create from Type classes
 export function decimal($a){
+    // type test
+    if($a === undefined) return item(new Decimal(0));
 	return cast($a,Decimal);
 }
 
@@ -148,23 +150,33 @@ export function integer($a){
 }
 
 export function string($a){
+    // type test
+    if($a === undefined) return item(String());
     if(_isSeq($a) || _isNode($a)) return data($a);
 	return cast($a,String);
 }
 
 export function number($a){
+    // type test
+    if($a === undefined) return item(Number(0));
 	return cast($a,Number);
 }
 
 export function float($a){
+    // type test
+    if($a === undefined) return item(new Float(0));
     return cast($a,Float);
 }
 
 export function double($a){
+    // type test
+    if($a === undefined) return item(Number(0));
 	return cast($a,Number);
 }
 
 export function boolean($a){
+    // type test
+    if($a === undefined) return item(Boolean());
     try {
         return seq(_boolean(item($a)));
     } catch(e) {
@@ -465,7 +477,7 @@ function dataImpl(node,asString=true,fltr=false) {
     if (_isSeq(node)) {
         return node.map(_ => dataImpl(_, asString, fltr)).filter(_ => _ !== undefined);
     }
-    if (!_isNode(node)) return node;
+    if (!_isNode(node)) return asString ? cast(node,String) : node;
     //if(node._string) {
     //    return node._string;
     //}
@@ -493,8 +505,7 @@ function dataImpl(node,asString=true,fltr=false) {
 export function instanceOf($a,$b) {
     let a = _first($a);
     let b = _first($b);
-    if(!a) throw error("XPTY0004");
-    var t = a=== undefined || b === undefined ? false : a.constructor === b.constructor;
+    var t = a === undefined || b === undefined ? false : a.constructor === b.constructor;
     return seq(t);
 }
 
