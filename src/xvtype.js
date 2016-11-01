@@ -152,7 +152,7 @@ export function integer($a){
 export function string($a){
     // type test
     if($a === undefined) return item(String());
-    if(_isSeq($a) || _isNode($a)) return data($a);
+    $a = _isSeq($a) || _isNode($a) ? data($a) : $a;
 	return cast($a,String);
 }
 
@@ -436,9 +436,9 @@ Seq.prototype.op = function (operator, other) {
             opfn = comp ? _comp.bind(null, operatorName, invert) : _op.bind(null, operatorName, invert);
         }
         if (comp) {
-            $a = data($a,false);
+            $a = data($a);
             //if(_isNodeSeq(this)) console.log("nodeset",operator,$a.first())
-            $b = data($b,false);
+            $b = data($b);
         }
         if (!general) {
             if (_isEmpty($a)) return $a;
@@ -464,39 +464,33 @@ Seq.prototype.getTextNodes = function(){
 	});
 };
 
-Seq.prototype.data = function (asString) {
-    return dataImpl(this,asString);
+Seq.prototype.data = function () {
+    return dataImpl(this);
 };
 
-export function data($a,asString) {
-    return dataImpl($a,asString);
+export function data($a) {
+    return dataImpl($a);
 }
 
 function dataImpl(node,asString=true,fltr=false) {
-    // FIXME asString should be used to flag for xs/type validation
-    if (_isSeq(node)) {
-        return node.map(_ => dataImpl(_, asString, fltr)).filter(_ => _ !== undefined);
-    }
-    if (!_isNode(node)) return asString ? cast(node,String) : node;
-    //if(node._string) {
-    //    return node._string;
-    //}
     var ret;
+    if (_isSeq(node)) {
+        if(node.isEmpty()) return node;
+        ret = node.map(_ => dataImpl(_, fltr)).filter(_ => _ !== undefined);
+        if(ret.isEmpty()){
+            ret = _xvseq.seq(new UntypedAtomic(""));
+        }
+        return ret;
+    }
+    if (!_isNode(node) || node.isEmpty()) return node;
     var type = node._type;
     if(fltr && fltr === type) return undefined;
     if (type === 1) {
-        ret = node.map(function (_) {
-            var ret = dataImpl(_, asString,2);
-            if (!(ret instanceof String)) asString = false;
-            return ret;
-        }).filter(function (_) {
-            return _ !== undefined;
-        });
-        if (asString) ret = ret.join("");
+        ret = node.map(_ => dataImpl(_, 2)).filter(_ => _ !== undefined);
     } else {
         ret = node.value();
-        if(asString || typeof ret == "string"){
-            ret = !ret ? undefined : asString ? ret.toString() : _cast(ret, UntypedAtomic);
+        if(typeof ret == "string"){
+            ret = !ret ? undefined : _cast(ret, UntypedAtomic);
         }
     }
     return ret;
