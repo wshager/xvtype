@@ -1,6 +1,6 @@
 {
   "name": "xvtype",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Type Schema for XVNode",
   "main": "./lib/xvtype.js",
   "scripts": {
