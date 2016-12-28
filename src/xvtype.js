@@ -1,6 +1,6 @@
 import { fromJS, Range } from "immutable";
 import Decimal from "decimal.js";
-import BigNumber from "bignumber.js";
+//import BigNumber from "bignumber.js";
 
 import * as xvnode from "xvnode";
 

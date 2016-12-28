@@ -17,12 +17,12 @@
   },
   "homepage": "https://github.com/wshager/xvtype#readme",
   "dependencies": {
-    "bignumber.js": "^2.4.0",
-    "decimal.js": "^6.0.0",
+    "bignumber.js": "^3.0.1",
+    "decimal.js": "^7.1.0",
     "immutable": "^3.8.1",
-    "xverr": "0.0.4",
-    "xvnode": "^0.1.4",
-    "xvseq": "^0.1.6"
+    "xverr": "*",
+    "xvnode": "*",
+    "xvseq": "*"
   },
   "devDependencies": {
     "babel-cli": "^6.18.0",
