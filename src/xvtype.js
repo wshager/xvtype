@@ -399,7 +399,7 @@ export function _boolean($a) {
     if ($a.size > 1 && !_isNode(a)) {
         throw error("err:FORG0006");
     }
-    return !!a;
+    return !!a.valueOf();
 }
 
 export const logic = {
@@ -472,13 +472,13 @@ export function data($a) {
     return dataImpl($a);
 }
 
-function dataImpl(node,asString=true,fltr=false) {
+function dataImpl(node,fltr=false) {
     var ret;
     if (_isSeq(node)) {
         if(node.isEmpty()) return node;
         ret = node.map(_ => dataImpl(_, fltr)).filter(_ => _ !== undefined);
         if(ret.isEmpty()){
-            ret = _xvseq.seq(new UntypedAtomic(""));
+            ret = seq(new UntypedAtomic(""));
         }
         return ret;
     }
@@ -517,6 +517,11 @@ export function text($a) {
     if(_isNode(a)) return $a.getTextNodes();
     return xvnode.text($a);
 }
+
+export function QName(uri, name) {
+    return new xvnode.QName(uri,name);
+}
+
 
 // TODO export element + attribute and friends as functions with type tests
 export const element = xvnode.element;
