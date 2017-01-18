@@ -510,7 +510,6 @@ export function instanceOf($a, $b) {
     return seq(t);
 }
 
-// TODO rename to neg, add to ops (b undefined)
 export function minus($a) {
     var a = _first($a);
     if (typeof a.neg == "function") return seq(a.neg());
