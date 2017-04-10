@@ -1,25 +1,10 @@
-import {
-    fromJS,
-    Range
-} from "immutable";
-import Decimal from "decimal.js";
-
-import * as xvnode from "xvnode";
+import Decimal from "big.js";
 
 import {
     error
 } from "xverr";
 
-import {
-    Seq,
-    seq,
-    _first,
-    _isSeq,
-    toSeq,
-    _isEmpty
-} from "xvseq";
-
-const _isNode = xvnode._isNode;
+import { seq, _first, isSeq, toSeq, _isEmptySeq, _isNode, _isEmptyNode } from "frink";
 
 // TODO complete math (e.g. type checks for idiv and friends)
 
@@ -144,64 +129,54 @@ Object.assign(Number.prototype, compProto, opProto);
 
 Object.assign(Boolean.prototype, compProto);
 
-// everything is at least an item
-export function item($a) {
-    return seq($a);
-}
+// TODO decimal opt-in/out
+const zeroInt = () => new Decimal(0);
+const zero = () => Number(0);
+const emptyString = () => String();
 
 // TODO create from Type classes
 export function decimal($a) {
     // type test
-    if ($a === undefined) return item(new Decimal(0));
-    return cast($a, Decimal);
+    if ($a === undefined) return ;
+    return cast($a, Decimal, zeroInt);
 }
 
 export function integer($a) {
-    return cast($a, Integer);
+    return cast($a, Integer, zeroÌnt);
 }
 
 export function string($a) {
     // type test
-    if ($a === undefined) return item(String());
-    $a = _isSeq($a) || _isNode($a) ? data($a) : $a;
-    return cast($a, String);
+    return isSeq($a) || _isNode($a) ? data($a) : cast($a, String, emptyString);
 }
 
 export function number($a) {
     // type test
-    if ($a === undefined) return item(Number(0));
-    return cast($a, Number);
+    return cast($a, Number, zero);
 }
 
 export function float($a) {
     // type test
-    if ($a === undefined) return item(new Float(0));
-    return cast($a, Float);
+    return cast($a, Float, zero);
 }
 
 export function double($a) {
     // type test
-    if ($a === undefined) return item(Number(0));
-    return cast($a, Number);
+    return cast($a, Number, zero);
 }
 
 export function boolean($a) {
     // type test
-    if ($a === undefined) return item(Boolean());
     try {
-        return seq(_boolean(item($a)));
+        return _boolean($a);
     } catch (e) {
         return e;
     }
 }
 
 export function cast($a, $b) {
-    /* ALT
-    var a = _first($a);
-    if(a === undefined) return $a;
-    return seq(_cast(a,_first($b)));
-    */
-    return item($a).op(_cast, $b);
+    if(isSeq($a)) return op($a,_cast, $b);
+    return _cast($a);
 }
 
 function _convert(a, type) {
@@ -221,7 +196,7 @@ export function to($a, $b) {
     let b = _first($b);
     a = a !== undefined ? +a.valueOf() : 0;
     b = b !== undefined ? +b.valueOf() : 0;
-    return new Seq(Range(a, b + 1).map(_ => integer(_)).toArray());
+    return range(a, b + 1);
 }
 
 export function indexOf($a, $b) {
@@ -337,49 +312,20 @@ function _promote(a, b) {
     return [a, b];
 }
 
-var NOT_SET = {};
-
-function opFactory(iterable, opfn, other) {
-    var seq = Object.create(Seq.prototype);
-    seq.size = iterable.size;
-    var otherIsSeq = _isSeq(other);
-    seq.has = key => iterable.has(key);
-    seq.get = (key, notSetValue) => {
-        var v = _first(iterable.get(key, NOT_SET));
-        return otherIsSeq ? other.reduce(function(pre, cur) {
-            return pre || opfn(v, cur);
-        }, false) : opfn(v, other);
-    };
-    seq.__iterateUncached = function(fn, reverse) {
-        var seq = this,
-            _i = 0,
-            stopped = false,
-            ret;
-        return iterable.__iterate(function(v, k, c) {
-            ret = otherIsSeq ? other.reduce(function(pre, cur) {
-                return pre || opfn(v, cur);
-            }, false) : opfn(v, other);
-            stopped = fn(ret, _i++, seq) === false;
-            return !stopped;
-        });
-    };
-    return seq;
-}
-
-function strictOp(iterable, opfn, other, general) {
-    var otherIsSeq = _isSeq(other);
+function _opReducer(iterable, opfn, other, general) {
+    var otherIsSeq = isSeq(other);
     if (general) {
-        return seq(iterable.reduce(function(acc, v) {
-            return acc || (otherIsSeq ? other.reduce(function(pre, cur) {
+        return seq(foldLeft(iterable,function(acc, v) {
+            return acc || (otherIsSeq ? foldLeft(other,function(pre, cur) {
                 return pre || opfn(v, cur);
             }, false) : opfn(v, other));
         }, false));
     } else if (iterable.size == 1) {
-        let b = otherIsSeq ? other.first() : other;
-        return seq(opfn(iterable.first(), b));
+        let b = otherIsSeq ? first(other) : other;
+        return seq(opfn(first(iterable), b));
     } else {
-        return iterable.map(function(v) {
-            return otherIsSeq ? other.reduce(function(pre, cur) {
+        return forEach(iterable,function(v) {
+            return otherIsSeq ? foldLeft(other,function(pre, cur) {
                 return pre || opfn(v, cur);
             }, false) : opfn(v, other);
         });
@@ -388,7 +334,7 @@ function strictOp(iterable, opfn, other, general) {
 
 // TODO without eval!
 function _isNodeSeq($a) {
-    return _isNode(_first($a));
+    return node(first($a));
 }
 
 // FIXME the unmarshalling of seqs is probably more efficient than anything else...
@@ -418,18 +364,16 @@ const opinv = {
     ne: true,
     '!=': true
 };
-Seq.prototype.op = function(operator, other) {
+export function op($a, operator, $b) {
     var invert = false,
         comp = false,
         general = false;
-    var $a = this,
-        $b = other,
-        opfn;
+    var opfn;
     if (typeof operator == "string") {
         invert = opinv[operator];
         let operatorName = operator in operatorMap ? operatorMap[operator] : operator;
         if (logic[operatorName]) {
-            return logic[operatorName](this, other);
+            return logic[operatorName]($a, $b);
         } else {
             comp = compProto.hasOwnProperty(operatorName);
             general = comp && !compProto.hasOwnProperty(operator);
@@ -437,7 +381,6 @@ Seq.prototype.op = function(operator, other) {
         }
         if (comp) {
             $a = data($a);
-            //if(_isNodeSeq(this)) console.log("nodeset",operator,$a.first())
             $b = data($b);
         }
         if (!general) {
@@ -452,21 +395,8 @@ Seq.prototype.op = function(operator, other) {
     } else {
         return error("xxx", "No such operator");
     }
-    return $a._isStrict ? strictOp($a, opfn, $b, general) : opFactory($a, opfn, $b);
-};
-
-Seq.prototype.getTextNodes = function() {
-    if (_isSeq(this)) return this.map(_ => _.getTextNodes());
-    if (!_isNode(this) || this._type != 1) return seq();
-    return this.filter(function(_) {
-        if (!_isNode(_)) error("err:XPTY0004", "Sequence cannot be converted into a node set.");
-        return _._type === 3 && !!_.value().toString();
-    });
-};
-
-Seq.prototype.data = function() {
-    return dataImpl(this);
-};
+    return _opReducer($a, opfn, $b, general);
+}
 
 export function data($a) {
     return dataImpl($a);
@@ -474,28 +404,24 @@ export function data($a) {
 
 function dataImpl(node, fltr = false) {
     var ret;
-    if (_isSeq(node)) {
-        if (node.isEmpty()) return node;
+    if (isSeq(node)) {
+        if (_isEmptyNode(node)) return node;
         //ret = node.map(_ => dataImpl(_, fltr)).filter(_ => _ !== undefined);
-        var a = [];
-        node.forEach(function(_) {
-            var r = dataImpl(_, fltr);
-            if (r !== undefined) a.push(r);
-        });
-        if (!a.length) {
+        var a = filter(node,_ => undefined !== dataImpl(_, fltr));
+        if (!a.size) {
             ret = seq(new UntypedAtomic(""));
         } else {
-            ret = toSeq(a);
+            ret = a;
         }
         return ret;
     }
-    if (!_isNode(node) || node.isEmpty()) return node;
-    var type = node._type;
+    if (!_isNode(node) || _isEmptyNode(node)) return node;
+    var type = node.type;
     if (fltr && fltr === type) return undefined;
     if (type === 1) {
         ret = node.map(_ => dataImpl(_, 2)).filter(_ => _ !== undefined);
     } else {
-        ret = node.value();
+        ret = node.value;
         if (typeof ret == "string") {
             ret = !ret ? undefined : _cast(ret, UntypedAtomic);
         }
@@ -507,36 +433,11 @@ export function instanceOf($a, $b) {
     let a = _first($a);
     let b = _first($b);
     var t = a === undefined || b === undefined ? false : a.constructor === b.constructor;
-    return seq(t);
+    return t;
 }
 
 export function minus($a) {
     var a = _first($a);
-    if (typeof a.neg == "function") return seq(a.neg());
-    return seq(-a);
+    if (typeof a.neg == "function") return a.neg();
+    return -a;
 }
-
-export function text($a) {
-    let a = _first($a);
-    // this is for type testing
-    if (a === undefined) return xvnode.text("");
-    if (_isNode(a)) return $a.getTextNodes();
-    return xvnode.text($a);
-}
-
-export function QName(uri, name) {
-    return new xvnode.QName(uri, name);
-}
-
-
-// TODO export element + attribute and friends as functions with type tests
-export const element = xvnode.element;
-export const attribute = xvnode.attribute;
-
-Seq.prototype.deepEqual = Seq.prototype.equals;
-
-export {
-    fromJS,
-    _isNode
-};
-export * from "xvseq";
